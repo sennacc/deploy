@@ -1,0 +1,5 @@
+name: Validate Commits
+on: [pull_request]
+jobs:
+  validate:
+    uses: sennacc/.github/.github/workflows/validate-commits.yml@main
