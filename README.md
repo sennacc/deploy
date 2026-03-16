@@ -1,37 +1,10 @@
 <div align="center">
+[![CI](https://github.com/sennacc/deploy/actions/workflows/ci.yml/badge.svg)](https://github.com/sennacc/deploy/actions/workflows/ci.yml) [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/) [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 
 # @sennacc/deploy
 
-**GitHub Actions composite actions and rollback procedures**
+**Gi<div align="center">
 
-Layer 4 — Platform · [SENNA Command Center](https://github.com/sennacc)
+# @sennacc/deploy
 
-</div>
-
----
-
-> **S**oftware **E**ngineering **N**etwork of **N**ative **A**gents
-
-## Overview
-
-This repository is part of the [SENNA Command Center](https://github.com/sennacc) — an AI Engineering Platform for commanding autonomous teams of specialized AI agents.
-
-## Setup
-
-```bash
-npm install
-npm run typecheck
-npm run test
-```
-
-## Branch Strategy
-
-This project uses **GitHub Flow**:
-
-- `main` — production-ready, always deployable
-- `feat/*` — feature branches, PR to main
-- Tags `v*` — production releases
-
-## License
-
-Proprietary — Copyright (c) 2026 BlackBox Technology Ltd. All rights reserved.
+**Gibase64: invalid input
