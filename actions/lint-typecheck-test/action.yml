@@ -1,0 +1,35 @@
+name: Lint, Typecheck & Test
+description: Run full quality gate (lint + typecheck + unit tests)
+
+inputs:
+  working-directory:
+    description: Directory with package.json
+    required: false
+    default: '.'
+
+outputs:
+  test-coverage:
+    description: Coverage percentage
+    value: ${{ steps.test.outputs.coverage }}
+
+runs:
+  using: composite
+  steps:
+    - name: Lint
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm run lint
+
+    - name: Typecheck
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm run typecheck
+
+    - name: Test
+      id: test
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        npm run test -- --reporter=verbose --coverage
+        COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct' 2>/dev/null || echo "0")
+        echo "coverage=$COVERAGE" >> "$GITHUB_OUTPUT"

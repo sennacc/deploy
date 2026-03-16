@@ -1,0 +1,149 @@
+# Template workflow for EC2 worker services (sennacc/executor)
+# Copy to .github/workflows/ci.yml in the target repo
+# Requires secrets: SSH_DEPLOY_KEY, WORKER_01_IP, WORKER_02_IP, WORKER_01_FINGERPRINT, WORKER_02_FINGERPRINT
+# TODO(P1-E): sennacc/deploy/actions/*@main is a floating ref — a push to main instantly
+# affects all 29 consumer repos. Pin to a semver tag (e.g. @v1) once the first release
+# is cut. Track in: https://github.com/sennacc/deploy/issues (version pinning)
+
+name: CI + Deploy EC2
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, stage]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: EC2 target to deploy to
+        type: choice
+        options: [worker-01, worker-02, both]
+        default: worker-01
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # EC2 deploys must never be cancelled mid-flight
+
+jobs:
+  quality:
+    name: Lint + Typecheck + Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: sennacc/deploy/actions/setup-node@main
+
+      - uses: sennacc/deploy/actions/lint-typecheck-test@main
+
+  deploy-worker-01:
+    name: Deploy worker-01
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      (github.event.inputs.target == 'worker-01' || github.event.inputs.target == 'both' || github.event.inputs.target == '')
+    environment: production-ec2
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: sennacc/deploy/actions/deploy-ec2@main
+        id: deploy
+        with:
+          ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
+          ec2-host: ${{ secrets.WORKER_01_IP }}
+          host-fingerprint: ${{ secrets.WORKER_01_FINGERPRINT }}
+          app-name: senna-worker  # REPLACE with actual PM2 app name
+          app-directory: /home/ec2-user/senna-worker  # REPLACE with actual path
+
+      - uses: sennacc/deploy/actions/health-check@main
+        id: health
+        with:
+          url: http://${{ secrets.WORKER_01_IP }}:3000/health
+          max-retries: '12'
+          retry-delay: '5'
+          require-body-ok: 'true'
+
+      - name: Rollback on failure
+        if: failure()
+        shell: bash
+        run: |
+          # SEC-01: ssh-agent in memory — never write PEM to disk
+          eval "$(ssh-agent -s)"
+          echo "${{ secrets.SSH_DEPLOY_KEY }}" | ssh-add -
+          trap 'ssh-agent -k' EXIT
+
+          # P1-F: fingerprint required — no ssh-keyscan fallback (MITM risk)
+          echo "${{ secrets.WORKER_01_FINGERPRINT }}" >> ~/.ssh/known_hosts
+
+          # SEC-02: pre-deploy commit from GITHUB_OUTPUT — not /tmp
+          PRE_COMMIT="${{ steps.deploy.outputs.pre-deploy-commit }}"
+          if [ -n "$PRE_COMMIT" ] && [ "$PRE_COMMIT" != "none" ]; then
+            ssh -o StrictHostKeyChecking=yes \
+              ec2-user@${{ secrets.WORKER_01_IP }} \
+              "cd /home/ec2-user/senna-worker && git reset --hard $PRE_COMMIT && npm ci && pm2 reload senna-worker"
+            echo "Rollback to $PRE_COMMIT completed."
+          else
+            echo "WARN: No pre-deploy commit available for rollback."
+          fi
+
+  deploy-worker-02:
+    name: Deploy worker-02
+    needs: [quality, deploy-worker-01]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      github.event.inputs.target == 'both'
+    environment: production-ec2
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: sennacc/deploy/actions/deploy-ec2@main
+        id: deploy
+        with:
+          ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
+          ec2-host: ${{ secrets.WORKER_02_IP }}
+          host-fingerprint: ${{ secrets.WORKER_02_FINGERPRINT }}
+          app-name: senna-worker  # REPLACE with actual PM2 app name
+          app-directory: /home/ec2-user/senna-worker  # REPLACE with actual path
+
+      - uses: sennacc/deploy/actions/health-check@main
+        id: health
+        with:
+          url: http://${{ secrets.WORKER_02_IP }}:3000/health
+          max-retries: '12'
+          retry-delay: '5'
+          require-body-ok: 'true'
+
+      - name: Rollback on failure
+        if: failure()
+        shell: bash
+        run: |
+          # SEC-01: ssh-agent in memory — never write PEM to disk
+          eval "$(ssh-agent -s)"
+          echo "${{ secrets.SSH_DEPLOY_KEY }}" | ssh-add -
+          trap 'ssh-agent -k' EXIT
+
+          # P1-F: fingerprint required — no ssh-keyscan fallback (MITM risk)
+          echo "${{ secrets.WORKER_02_FINGERPRINT }}" >> ~/.ssh/known_hosts
+
+          # SEC-02: pre-deploy commit from GITHUB_OUTPUT — not /tmp
+          PRE_COMMIT="${{ steps.deploy.outputs.pre-deploy-commit }}"
+          if [ -n "$PRE_COMMIT" ] && [ "$PRE_COMMIT" != "none" ]; then
+            ssh -o StrictHostKeyChecking=yes \
+              ec2-user@${{ secrets.WORKER_02_IP }} \
+              "cd /home/ec2-user/senna-worker && git reset --hard $PRE_COMMIT && npm ci && pm2 reload senna-worker"
+            echo "Rollback to $PRE_COMMIT completed."
+          else
+            echo "WARN: No pre-deploy commit available for rollback."
+          fi

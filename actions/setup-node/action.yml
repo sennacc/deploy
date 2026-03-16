@@ -1,0 +1,27 @@
+name: Setup Node
+description: Install Node 20 with npm cache
+
+inputs:
+  node-version:
+    description: Node.js version to use
+    required: false
+    default: '20'
+  working-directory:
+    description: Directory with package.json
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm ci --prefer-offline

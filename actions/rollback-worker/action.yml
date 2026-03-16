@@ -1,0 +1,65 @@
+name: Rollback CF Worker
+description: Roll back a Cloudflare Worker to a specific version or the previous version
+
+inputs:
+  cloudflare-api-key:
+    description: Cloudflare Global API Key (X-Auth-Key)
+    required: true
+  cloudflare-email:
+    description: Cloudflare account email
+    required: true
+  working-directory:
+    description: Directory with wrangler.toml
+    required: false
+    default: '.'
+  environment:
+    description: Target environment (production, staging)
+    required: false
+    default: production
+  version-id:
+    description: Specific version ID to rollback to (leave empty for previous version)
+    required: false
+    default: ''
+  dry-run:
+    description: Perform a dry-run (show what would be rolled back without executing)
+    required: false
+    default: 'false'
+
+outputs:
+  rolled-back-to:
+    description: Version ID that was rolled back to
+    value: ${{ steps.rollback.outputs.rolled-back-to }}
+
+runs:
+  using: composite
+  steps:
+    - name: Rollback Worker
+      id: rollback
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # SEC-08: X-Auth-Key + X-Auth-Email
+        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
+        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+      run: |
+        VERSION_ID="${{ inputs.version-id }}"
+        DRY_RUN="${{ inputs.dry-run }}"
+
+        if [ "$DRY_RUN" = "true" ]; then
+          echo "[DRY-RUN] Would rollback worker to: ${VERSION_ID:-previous version}"
+          echo "rolled-back-to=${VERSION_ID:-dry-run}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ -n "$VERSION_ID" ]; then
+          echo "Rolling back to specific version: $VERSION_ID"
+          npx wrangler rollback "$VERSION_ID" --env "${{ inputs.environment }}"
+          echo "rolled-back-to=$VERSION_ID" >> "$GITHUB_OUTPUT"
+        else
+          echo "Rolling back to previous version"
+          ROLLBACK_OUTPUT=$(npx wrangler rollback --env "${{ inputs.environment }}" 2>&1)
+          echo "$ROLLBACK_OUTPUT"
+          ROLLED_TO=$(echo "$ROLLBACK_OUTPUT" | grep -oP 'Version ID: \K[a-f0-9-]+' | head -1 || echo "unknown")
+          echo "rolled-back-to=$ROLLED_TO" >> "$GITHUB_OUTPUT"
+        fi
+        echo "Rollback completed."

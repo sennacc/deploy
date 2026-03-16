@@ -1,0 +1,76 @@
+name: Publish npm Package
+description: Publish a package to npm registry under @sennacc scope
+
+inputs:
+  npm-token:
+    description: npm Automation token
+    required: true
+  working-directory:
+    description: Directory with package.json
+    required: false
+    default: '.'
+  dry-run:
+    description: Perform dry-run publish (no actual publish)
+    required: false
+    default: 'false'
+  tag:
+    description: npm dist-tag (latest, next, beta)
+    required: false
+    default: latest
+
+outputs:
+  package-version:
+    description: Published package version
+    value: ${{ steps.publish.outputs.package-version }}
+  package-name:
+    description: Published package name
+    value: ${{ steps.publish.outputs.package-name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure npm auth
+      shell: bash
+      run: |
+        # SEC-09: write only the token reference, never log it
+        echo "//registry.npmjs.org/:_authToken=${{ inputs.npm-token }}" > ~/.npmrc
+        npm config set scope "@sennacc"
+
+    - name: Validate package.json
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        PACKAGE_NAME=$(node -p "require('./package.json').name")
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        echo "Publishing: $PACKAGE_NAME@$PACKAGE_VERSION"
+
+        # Enforce @sennacc scope
+        if [[ "$PACKAGE_NAME" != @sennacc/* ]]; then
+          echo "ERROR: Package name must start with @sennacc/. Got: $PACKAGE_NAME"
+          exit 1
+        fi
+
+    - name: Publish
+      id: publish
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        PACKAGE_NAME=$(node -p "require('./package.json').name")
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+        DRY_RUN_FLAG=""
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          DRY_RUN_FLAG="--dry-run"
+          echo "[DRY-RUN] Would publish: $PACKAGE_NAME@$PACKAGE_VERSION"
+        fi
+
+        npm publish --access public --tag ${{ inputs.tag }} $DRY_RUN_FLAG
+
+        echo "package-name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+        echo "package-version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+        echo "Published $PACKAGE_NAME@$PACKAGE_VERSION"
+
+    - name: Cleanup npm auth
+      shell: bash
+      if: always()
+      run: rm -f ~/.npmrc

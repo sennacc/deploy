@@ -1,0 +1,70 @@
+name: Deploy CF Worker
+description: Deploy a Cloudflare Worker via wrangler deploy
+
+inputs:
+  cloudflare-api-key:
+    description: Cloudflare Global API Key (X-Auth-Key)
+    required: true
+  cloudflare-email:
+    description: Cloudflare account email
+    required: true
+  working-directory:
+    description: Directory with wrangler.toml
+    required: false
+    default: '.'
+  environment:
+    description: Target environment (production, staging)
+    required: false
+    default: production
+
+outputs:
+  worker-url:
+    description: Deployed worker URL
+    value: ${{ steps.deploy.outputs.worker-url }}
+  worker-version:
+    description: Deployed worker version ID
+    value: ${{ steps.deploy.outputs.worker-version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate wrangler.toml exists
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ ! -f wrangler.toml ]; then
+          echo "ERROR: wrangler.toml not found in ${{ inputs.working-directory }}"
+          exit 1
+        fi
+
+    - name: Deploy Worker
+      id: deploy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # SEC-08: X-Auth-Key + X-Auth-Email — NEVER Bearer token
+        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
+        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+      run: |
+        DEPLOY_OUTPUT=$(npx wrangler deploy --env "${{ inputs.environment }}" 2>&1)
+        echo "$DEPLOY_OUTPUT"
+
+        # Extract version ID from wrangler output
+        VERSION=$(echo "$DEPLOY_OUTPUT" | grep -oP 'Version ID: \K[a-f0-9-]+' | head -1 || echo "unknown")
+
+        # Extract worker name robustly via node (avoids sed/grep fragility with TOML)
+        WORKER_NAME=$(node -e "
+          const fs = require('fs');
+          const toml = fs.readFileSync('wrangler.toml', 'utf8');
+          const match = toml.match(/^name\s*=\s*[\"']?([^\"'\s]+)[\"']?/m);
+          console.log(match ? match[1] : '');
+        " 2>/dev/null || echo "")
+
+        if [ -z "$WORKER_NAME" ]; then
+          echo "ERROR: Could not extract 'name' from wrangler.toml"
+          exit 1
+        fi
+
+        echo "worker-version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "worker-url=https://${WORKER_NAME}.blackbox.dog" >> "$GITHUB_OUTPUT"
+        echo "Deployed: $WORKER_NAME (version: $VERSION)"

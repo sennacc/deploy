@@ -1,0 +1,141 @@
+name: Deploy CF Pages
+description: Deploy a Cloudflare Pages project via wrangler pages deploy
+
+inputs:
+  cloudflare-api-key:
+    description: Cloudflare Global API Key (X-Auth-Key)
+    required: true
+  cloudflare-email:
+    description: Cloudflare account email
+    required: true
+  project-name:
+    description: Cloudflare Pages project name
+    required: true
+  directory:
+    description: Build output directory to deploy
+    required: false
+    default: out
+  working-directory:
+    description: Directory containing the build output
+    required: false
+    default: '.'
+  branch:
+    description: Branch name for preview deploys (leave empty for production)
+    required: false
+    default: ''
+  health-url:
+    description: URL to health-check after deploy (triggers rollback if fails)
+    required: false
+    default: ''
+  account-id:
+    description: Cloudflare Account ID
+    required: true
+
+outputs:
+  deployment-url:
+    description: Deployed Pages URL
+    value: ${{ steps.deploy.outputs.deployment-url }}
+  deployment-id:
+    description: Cloudflare deployment ID (used for rollback)
+    value: ${{ steps.deploy.outputs.deployment-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate build output
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ ! -d "${{ inputs.directory }}" ]; then
+          echo "ERROR: Build directory '${{ inputs.directory }}' not found. Run build first."
+          exit 1
+        fi
+        FILE_COUNT=$(find "${{ inputs.directory }}" -type f | wc -l)
+        echo "Build directory contains $FILE_COUNT files."
+        if [ "$FILE_COUNT" -eq 0 ]; then
+          echo "ERROR: Build directory is empty."
+          exit 1
+        fi
+
+    - name: Deploy to Pages
+      id: deploy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # SEC-08: X-Auth-Key + X-Auth-Email — NEVER Bearer token
+        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
+        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+      run: |
+        BRANCH_FLAG=""
+        if [ -n "${{ inputs.branch }}" ]; then
+          BRANCH_FLAG="--branch=${{ inputs.branch }}"
+        fi
+
+        DEPLOY_OUTPUT=$(npx wrangler pages deploy "${{ inputs.directory }}" \
+          --project-name="${{ inputs.project-name }}" \
+          $BRANCH_FLAG 2>&1)
+        echo "$DEPLOY_OUTPUT"
+
+        URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[^\s]+\.pages\.dev[^\s]*' | tail -1 \
+          || echo "https://senna.blackbox.dog")
+        DEPLOYMENT_ID=$(echo "$DEPLOY_OUTPUT" | grep -oP 'deployment_id["\s:]+\K[a-f0-9-]+' | head -1 || echo "")
+
+        echo "deployment-url=$URL" >> "$GITHUB_OUTPUT"
+        echo "deployment-id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+        echo "Deployed to: $URL"
+
+    - name: Health check post-deploy
+      id: health
+      if: ${{ inputs.health-url != '' }}
+      shell: bash
+      continue-on-error: true
+      run: |
+        MAX_ATTEMPTS=12
+        DELAY=10
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          RESPONSE=$(curl -sf --max-time 10 "${{ inputs.health-url }}" || echo "FAIL")
+          STATUS=$(echo "$RESPONSE" | jq -r '.status' 2>/dev/null || echo "")
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${{ inputs.health-url }}" || echo "000")
+
+          if [ "$HTTP_CODE" = "200" ] && { [ "$STATUS" = "ok" ] || [ -z "$STATUS" ]; }; then
+            echo "Health check PASSED ($HTTP_CODE, body.status=$STATUS)"
+            exit 0
+          fi
+          echo "Attempt $i/$MAX_ATTEMPTS: HTTP $HTTP_CODE, body.status=$STATUS. Waiting ${DELAY}s..."
+          sleep $DELAY
+        done
+        echo "Health check FAILED after $MAX_ATTEMPTS attempts"
+        exit 1
+
+    - name: Rollback Pages on health failure
+      # SEC-03: auto-rollback when health check fails
+      if: ${{ inputs.health-url != '' && steps.health.outcome == 'failure' }}
+      shell: bash
+      env:
+        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
+        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+      run: |
+        echo "Health check failed. Rolling back CF Pages deployment."
+        CF_API="https://api.cloudflare.com/client/v4"
+        ACCOUNT_ID="${{ inputs.account-id }}"
+        PROJECT="${{ inputs.project-name }}"
+
+        # Get the previous deployment (index 1, current is index 0)
+        PREV_DEPLOYMENT=$(curl -sf \
+          -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
+          -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
+          "${CF_API}/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}/deployments?per_page=2" \
+          | jq -r '.result[1].id // empty')
+
+        if [ -z "$PREV_DEPLOYMENT" ]; then
+          echo "ERROR: No previous deployment found to rollback to."
+          exit 1
+        fi
+
+        echo "Rolling back to deployment: $PREV_DEPLOYMENT"
+        curl -sf -X POST \
+          -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
+          -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
+          "${CF_API}/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}/deployments/${PREV_DEPLOYMENT}/retry"
+        echo "CF Pages rollback initiated."
+        exit 1  # Still fail the workflow to signal rollback occurred

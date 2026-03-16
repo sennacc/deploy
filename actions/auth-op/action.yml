@@ -1,0 +1,53 @@
+name: Auth 1Password
+description: Install op CLI and inject secrets from 1Password vault
+
+inputs:
+  service-account-token:
+    description: 1Password Service Account token
+    required: true
+  secrets:
+    description: >
+      Newline-separated list of secret references in format:
+      ENV_VAR=op://vault/item/field
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install 1Password CLI
+      shell: bash
+      run: |
+        # Install op CLI if not present
+        if ! command -v op &>/dev/null; then
+          curl -sSfL https://cache.agilebits.com/dist/1P/op2/pkg/v2.30.0/op_linux_amd64_v2.30.0.zip \
+            -o /tmp/op.zip
+          unzip -q /tmp/op.zip -d /tmp/op-bin
+          sudo mv /tmp/op-bin/op /usr/local/bin/op
+          rm -rf /tmp/op.zip /tmp/op-bin
+          echo "1Password CLI installed: $(op --version)"
+        else
+          echo "1Password CLI already present: $(op --version)"
+        fi
+
+    - name: Inject secrets
+      shell: bash
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.service-account-token }}
+      run: |
+        # SEC-05: pipe op read directly to GITHUB_ENV — no intermediate variables
+        if [ -z "${{ inputs.secrets }}" ]; then
+          echo "No secrets to inject."
+          exit 0
+        fi
+
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          ENV_VAR="${line%%=*}"
+          OP_REF="${line#*=}"
+          secret_value="$(op read "$OP_REF")"
+          # SEC-05: mask secret value in runner logs before writing to GITHUB_ENV
+          echo "::add-mask::${secret_value}"
+          printf '%s=%s\n' "$ENV_VAR" "${secret_value}" >> "$GITHUB_ENV"
+          echo "Injected: $ENV_VAR"
+        done <<< "${{ inputs.secrets }}"
