@@ -92,7 +92,7 @@ jobs:
           account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           project-name: senna-command-center  # REPLACE with actual project name
           directory: out
-          health-url: https://senna.blackbox.dog  # REPLACE with actual health URL
+          health-url: https://painel.sennacc.com  # REPLACE with actual health URL
 
   preview:
     name: Deploy PR Preview
