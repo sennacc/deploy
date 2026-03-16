@@ -1,0 +1,74 @@
+name: Rollback CF Pages
+description: Roll back a Cloudflare Pages project to the previous deployment via API
+
+inputs:
+  cloudflare-api-key:
+    description: Cloudflare Global API Key (X-Auth-Key)
+    required: true
+  cloudflare-email:
+    description: Cloudflare account email
+    required: true
+  project-name:
+    description: Cloudflare Pages project name
+    required: true
+  account-id:
+    description: Cloudflare account ID
+    required: false
+    default: 'd6071201b3a0ef4f285db819401c4eaf'
+  dry-run:
+    description: Show which deployment would be targeted without executing rollback
+    required: false
+    default: 'false'
+
+outputs:
+  rolled-back-to:
+    description: Deployment ID that was rolled back to
+    value: ${{ steps.rollback.outputs.rolled-back-to }}
+
+runs:
+  using: composite
+  steps:
+    - name: Rollback Pages
+      id: rollback
+      shell: bash
+      env:
+        # SEC-08: X-Auth-Key + X-Auth-Email — NEVER Bearer token
+        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
+        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+      run: |
+        CF_API="https://api.cloudflare.com/client/v4"
+        ACCOUNT_ID="${{ inputs.account-id }}"
+        PROJECT="${{ inputs.project-name }}"
+        DRY_RUN="${{ inputs.dry-run }}"
+
+        # Get previous deployment (index 1; index 0 is current)
+        DEPLOYMENTS=$(curl -sf \
+          -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
+          -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
+          "${CF_API}/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}/deployments?per_page=2")
+
+        PREV_DEPLOYMENT=$(echo "$DEPLOYMENTS" | jq -r '.result[1].id // empty')
+        PREV_URL=$(echo "$DEPLOYMENTS" | jq -r '.result[1].url // empty')
+
+        if [ -z "$PREV_DEPLOYMENT" ]; then
+          echo "ERROR: No previous deployment found for project '$PROJECT'."
+          echo "Cannot rollback — only one deployment exists."
+          exit 1
+        fi
+
+        echo "Previous deployment: $PREV_DEPLOYMENT ($PREV_URL)"
+
+        if [ "$DRY_RUN" = "true" ]; then
+          echo "[DRY-RUN] Would rollback to deployment: $PREV_DEPLOYMENT"
+          echo "rolled-back-to=$PREV_DEPLOYMENT" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "Rolling back to: $PREV_DEPLOYMENT"
+        curl -sf -X POST \
+          -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
+          -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
+          "${CF_API}/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}/deployments/${PREV_DEPLOYMENT}/retry"
+
+        echo "rolled-back-to=$PREV_DEPLOYMENT" >> "$GITHUB_OUTPUT"
+        echo "CF Pages rollback to $PREV_DEPLOYMENT initiated."

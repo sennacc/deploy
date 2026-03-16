@@ -1,0 +1,46 @@
+name: Build CF Worker
+description: Build a Cloudflare Worker via npm run build
+
+inputs:
+  working-directory:
+    description: Directory with package.json and wrangler.toml
+    required: false
+    default: '.'
+  node-version:
+    description: Node.js version to use
+    required: false
+    default: '20'
+
+outputs:
+  build-size:
+    description: Size of the built worker in bytes
+    value: ${{ steps.build.outputs.build-size }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate wrangler.toml
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ ! -f wrangler.toml ]; then
+          echo "ERROR: wrangler.toml not found in ${{ inputs.working-directory }}"
+          exit 1
+        fi
+        echo "wrangler.toml found"
+
+    - name: Build
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        npm run build
+        # Report build size (dist/ or .wrangler/dist/)
+        BUILD_DIR=$(find . -name "*.js" -path "*/dist/*" | head -1 | xargs dirname 2>/dev/null || echo "dist")
+        if [ -d "$BUILD_DIR" ]; then
+          SIZE=$(du -sb "$BUILD_DIR" 2>/dev/null | cut -f1 || echo "0")
+          echo "build-size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "Build size: ${SIZE} bytes"
+        else
+          echo "build-size=0" >> "$GITHUB_OUTPUT"
+        fi

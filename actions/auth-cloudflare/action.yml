@@ -1,0 +1,21 @@
+name: Auth Cloudflare
+description: Export Cloudflare credentials as environment variables (X-Auth-Key + X-Auth-Email, NOT Bearer token)
+
+inputs:
+  cloudflare-api-key:
+    description: Cloudflare Global API Key
+    required: true
+  cloudflare-email:
+    description: Cloudflare account email
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Export Cloudflare credentials
+      shell: bash
+      run: |
+        # SEC-08: X-Auth-Key auth — NEVER Bearer token
+        echo "CLOUDFLARE_API_KEY=${{ inputs.cloudflare-api-key }}" >> "$GITHUB_ENV"
+        echo "CLOUDFLARE_EMAIL=${{ inputs.cloudflare-email }}" >> "$GITHUB_ENV"
+        echo "Cloudflare credentials exported (X-Auth-Key mode)"

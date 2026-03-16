@@ -1,0 +1,105 @@
+name: Deploy to EC2
+description: Deploy to EC2 via SSH using ssh-agent (key never written to disk)
+
+inputs:
+  ssh-private-key:
+    description: PEM private key for EC2 SSH (loaded into ssh-agent — never written to disk)
+    required: true
+  ec2-host:
+    description: EC2 public IP or hostname
+    required: true
+  ec2-user:
+    description: EC2 SSH user
+    required: false
+    default: ec2-user
+  app-name:
+    description: PM2 app name
+    required: true
+  app-directory:
+    description: App directory on EC2
+    required: false
+    default: /home/ec2-user/senna-worker
+  branch:
+    description: Git branch to deploy
+    required: false
+    default: main
+  host-fingerprint:
+    description: Known SSH fingerprint for the EC2 host (stored as org secret to prevent MITM). Required — no ssh-keyscan fallback.
+    required: true
+
+outputs:
+  deployed-commit:
+    description: Git commit SHA deployed
+    value: ${{ steps.deploy.outputs.deployed-commit }}
+  pre-deploy-commit:
+    description: Git commit SHA before deploy (for deterministic rollback)
+    value: ${{ steps.pre-deploy.outputs.commit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup SSH agent (key in memory — never on disk)
+      shell: bash
+      run: |
+        # SEC-01 FIX: use ssh-agent in memory, never write PEM to disk
+        eval "$(ssh-agent -s)"
+        echo "${{ inputs.ssh-private-key }}" | ssh-add -
+        echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+        echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        # SEC-07: StrictHostKeyChecking=yes — reject unknown hosts
+        # P1-F: host-fingerprint is required — ssh-keyscan fallback removed (MITM risk)
+        echo "${{ inputs.host-fingerprint }}" >> ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+
+        cat >> ~/.ssh/config <<EOF
+        Host ${{ inputs.ec2-host }}
+          StrictHostKeyChecking yes
+          ConnectTimeout 15
+        EOF
+
+    - name: Verify EC2 reachable
+      shell: bash
+      run: |
+        ssh "${{ inputs.ec2-user }}@${{ inputs.ec2-host }}" "echo 'SSH connection OK'"
+
+    - name: Get pre-deploy commit for rollback
+      id: pre-deploy
+      shell: bash
+      run: |
+        # SEC-02 FIX: pass via GITHUB_OUTPUT — never /tmp (cross-job inaccessible)
+        PRE_COMMIT=$(ssh \
+          "${{ inputs.ec2-user }}@${{ inputs.ec2-host }}" \
+          "cd ${{ inputs.app-directory }} && git rev-parse HEAD 2>/dev/null || echo 'none'")
+        echo "Pre-deploy commit: $PRE_COMMIT"
+        echo "commit=$PRE_COMMIT" >> "$GITHUB_OUTPUT"
+
+    - name: Deploy
+      id: deploy
+      shell: bash
+      run: |
+        DEPLOYED_COMMIT=$(ssh \
+          "${{ inputs.ec2-user }}@${{ inputs.ec2-host }}" \
+          "set -euo pipefail
+           cd ${{ inputs.app-directory }}
+           git fetch origin ${{ inputs.branch }}
+           git reset --hard origin/${{ inputs.branch }}
+           npm ci --prefer-offline
+           if node -p \"require('./package.json').scripts?.build || ''\" | grep -q .; then
+             npm run build
+           fi
+           pm2 reload ${{ inputs.app-name }} --update-env
+           git rev-parse HEAD")
+        echo "deployed-commit=$DEPLOYED_COMMIT" >> "$GITHUB_OUTPUT"
+        echo "Deployed commit: $DEPLOYED_COMMIT"
+
+    - name: Cleanup SSH agent
+      shell: bash
+      if: always()
+      run: |
+        if [ -n "${SSH_AGENT_PID:-}" ]; then
+          ssh-agent -k || true
+        fi

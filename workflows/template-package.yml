@@ -1,0 +1,73 @@
+# Template workflow for npm packages (@sennacc/*)
+# Copy to .github/workflows/ci.yml in the target repo
+# Publishing triggered EXCLUSIVELY by semver tags (v*.*.*) — never by push to main
+# TODO(P1-E): sennacc/deploy/actions/*@main is a floating ref — a push to main instantly
+# affects all 29 consumer repos. Pin to a semver tag (e.g. @v1) once the first release
+# is cut. Track in: https://github.com/sennacc/deploy/issues (version pinning)
+
+name: CI + Publish
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main, stage]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Dry-run publish (validate without publishing)
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint + Typecheck + Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: sennacc/deploy/actions/setup-node@main
+
+      - uses: sennacc/deploy/actions/lint-typecheck-test@main
+
+  publish:
+    name: Publish to npm
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Publish ONLY on semver tags — never on push to main (prevents accidental publishes)
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.dry-run == 'true'
+    environment: npm-publish
+    permissions:
+      contents: write
+      id-token: write  # npm provenance (SLSA)
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: sennacc/deploy/actions/setup-node@main
+
+      - uses: sennacc/deploy/actions/publish-npm@main
+        id: publish
+        with:
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          dry-run: ${{ github.event.inputs.dry-run == 'true' && 'true' || 'false' }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && github.event.inputs.dry-run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.publish.outputs.package-version }}"
+          PACKAGE="${{ steps.publish.outputs.package-name }}"
+          gh release create "v${VERSION}" \
+            --title "${PACKAGE}@${VERSION}" \
+            --generate-notes \
+            --verify-tag

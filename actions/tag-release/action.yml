@@ -1,0 +1,100 @@
+name: Tag Release
+description: Create a semver release tag with changelog generation
+
+inputs:
+  version:
+    description: Version to tag (e.g., 1.2.3 — without 'v' prefix)
+    required: false
+    default: ''
+  github-token:
+    description: GitHub token with contents:write permission
+    required: true
+  tag-prefix:
+    description: Prefix for the tag (default 'v')
+    required: false
+    default: 'v'
+  generate-notes:
+    description: Auto-generate release notes from commits
+    required: false
+    default: 'true'
+  draft:
+    description: Create as draft release
+    required: false
+    default: 'false'
+
+outputs:
+  tag:
+    description: The tag that was created
+    value: ${{ steps.tag.outputs.tag }}
+  version:
+    description: The version that was tagged
+    value: ${{ steps.tag.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Determine version
+      id: version
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.version }}" ]; then
+          VERSION="${{ inputs.version }}"
+        elif [ -f package.json ]; then
+          VERSION=$(node -p "require('./package.json').version")
+        else
+          echo "ERROR: No version provided and no package.json found."
+          exit 1
+        fi
+
+        # Validate semver format
+        if ! echo "$VERSION" | grep -qP '^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
+          echo "ERROR: '$VERSION' is not a valid semver version."
+          exit 1
+        fi
+
+        TAG="${{ inputs.tag-prefix }}${VERSION}"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "Creating tag: $TAG"
+
+    - name: Create release tag
+      id: tag
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        TAG="${{ steps.version.outputs.tag }}"
+        VERSION="${{ steps.version.outputs.version }}"
+        GENERATE_NOTES="${{ inputs.generate-notes }}"
+        DRAFT_FLAG=""
+
+        if [ "${{ inputs.draft }}" = "true" ]; then
+          DRAFT_FLAG="--draft"
+        fi
+
+        # Check if tag already exists
+        if git rev-parse "$TAG" &>/dev/null; then
+          echo "Tag $TAG already exists. Skipping."
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git tag "$TAG"
+        git push origin "$TAG"
+
+        # Create GitHub Release
+        NOTES_FLAG=""
+        if [ "$GENERATE_NOTES" = "true" ]; then
+          NOTES_FLAG="--generate-notes"
+        fi
+
+        gh release create "$TAG" \
+          --title "$TAG" \
+          $NOTES_FLAG \
+          $DRAFT_FLAG \
+          --verify-tag
+
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Release $TAG created."

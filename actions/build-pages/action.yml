@@ -1,0 +1,53 @@
+name: Build CF Pages
+description: Build a Next.js/static site for Cloudflare Pages deployment (outputs to out/)
+
+inputs:
+  working-directory:
+    description: Directory with package.json
+    required: false
+    default: '.'
+  output-dir:
+    description: Build output directory
+    required: false
+    default: 'out'
+  node-env:
+    description: NODE_ENV for build
+    required: false
+    default: 'production'
+
+outputs:
+  output-dir:
+    description: Path to the build output directory
+    value: ${{ steps.build.outputs.output-dir }}
+  file-count:
+    description: Number of files in the build output
+    value: ${{ steps.build.outputs.file-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        NODE_ENV: ${{ inputs.node-env }}
+      run: |
+        npm run build
+
+        OUTPUT_DIR="${{ inputs.output-dir }}"
+        if [ ! -d "$OUTPUT_DIR" ]; then
+          echo "ERROR: Build output directory '$OUTPUT_DIR' not found after build."
+          echo "Expected: ${{ inputs.working-directory }}/$OUTPUT_DIR"
+          exit 1
+        fi
+
+        FILE_COUNT=$(find "$OUTPUT_DIR" -type f | wc -l)
+        if [ "$FILE_COUNT" -eq 0 ]; then
+          echo "ERROR: Build output directory is empty."
+          exit 1
+        fi
+
+        echo "Build complete: $FILE_COUNT files in $OUTPUT_DIR"
+        echo "output-dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+        echo "file-count=$FILE_COUNT" >> "$GITHUB_OUTPUT"

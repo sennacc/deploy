@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate YAML + Shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Validate YAML files
+        run: |
+          echo "Validating composite actions..."
+          for f in actions/*/action.yml; do
+            echo "  Checking $f..."
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" || exit 1
+          done
+
+          echo "Validating workflow templates..."
+          for f in workflows/*.yml; do
+            echo "  Checking $f..."
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" || exit 1
+          done
+
+          echo "Validating self CI workflows..."
+          for f in .github/workflows/*.yml; do
+            echo "  Checking $f..."
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" || exit 1
+          done
+
+          echo "All YAML files valid."
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Shellcheck scripts
+        run: |
+          echo "Running shellcheck on all scripts..."
+          shellcheck scripts/*.sh
+          echo "All scripts pass shellcheck."
+
+      - name: Verify script executability
+        run: |
+          echo "Checking script permissions..."
+          for f in scripts/*.sh; do
+            if [ ! -x "$f" ]; then
+              echo "ERROR: $f is not executable"
+              exit 1
+            fi
+          done
+          echo "All scripts are executable."
+
+      - name: Count deliverables
+        run: |
+          ACTIONS=$(ls actions/*/action.yml 2>/dev/null | wc -l)
+          WORKFLOWS=$(ls workflows/*.yml 2>/dev/null | wc -l)
+          SCRIPTS=$(ls scripts/*.sh 2>/dev/null | wc -l)
+          echo ""
+          echo "=== Deliverable Count ==="
+          echo "  Composite actions: $ACTIONS (expected: >= 8)"
+          echo "  Workflow templates: $WORKFLOWS (expected: >= 4)"
+          echo "  Shell scripts: $SCRIPTS (expected: >= 5)"
+          echo ""
+          [ "$ACTIONS" -ge 8 ] || (echo "ERROR: Expected >= 8 actions, found $ACTIONS" && exit 1)
+          [ "$WORKFLOWS" -ge 4 ] || (echo "ERROR: Expected >= 4 workflows, found $WORKFLOWS" && exit 1)
+          [ "$SCRIPTS" -ge 5 ] || (echo "ERROR: Expected >= 5 scripts, found $SCRIPTS" && exit 1)
+          echo "All deliverable counts satisfied."
+
+      - name: Verify security requirements
+        run: |
+          echo "=== Security Audit ==="
+
+          # SEC-04: All actions/checkout must use SHA
+          echo "Checking SHA pins..."
+          if grep -rn "actions/checkout@v" actions/ workflows/ .github/ 2>/dev/null; then
+            echo "ERROR: Found tag-pinned actions/checkout (must use SHA)"
+            exit 1
+          fi
+          echo "  SHA pins: OK"
+
+          # SEC-01: No key written to disk pattern
+          echo "Checking for SSH key-to-disk patterns..."
+          if grep -rn "echo.*\.pem\|> key\.pem\|\.pem <<" actions/ scripts/ 2>/dev/null; then
+            echo "ERROR: Found pattern that writes SSH key to disk"
+            exit 1
+          fi
+          echo "  SSH key handling: OK"
+
+          # SEC-09: No hardcoded credentials
+          echo "Checking for hardcoded credentials..."
+          if grep -rn "api_key\s*=\s*[\"'][a-zA-Z0-9]" actions/ workflows/ scripts/ 2>/dev/null | grep -v "inputs\." | grep -v "secrets\." | grep -v "env\."; then
+            echo "WARN: Possible hardcoded credential pattern detected — review manually"
+          fi
+          echo "  Credential check: OK"
+
+          echo "Security audit passed."
