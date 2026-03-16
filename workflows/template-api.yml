@@ -1,7 +1,7 @@
 # Template workflow for Cloudflare Worker repos (sennacc/api, sennacc/gateway)
 # Copy to .github/workflows/ci.yml in the target repo
 # Replace: HEALTH_CHECK_URL var, worker name in notify-hill target
-# TODO(P1-E): sennacc/deploy/actions/*@main is a floating ref — a push to main instantly
+# TODO(P1-E): sennacc/deploy/actions/*@v1 is a floating ref — a push to main instantly
 # affects all 29 consumer repos. Pin to a semver tag (e.g. @v1) once the first release
 # is cut. Track in: https://github.com/sennacc/deploy/issues (version pinning)
 
@@ -33,11 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: sennacc/deploy/actions/setup-node@main
+      - uses: sennacc/deploy/actions/setup-node@v1
         with:
           working-directory: .
 
-      - uses: sennacc/deploy/actions/lint-typecheck-test@main
+      - uses: sennacc/deploy/actions/lint-typecheck-test@v1
         with:
           working-directory: .
 
@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: sennacc/deploy/actions/setup-node@main
+      - uses: sennacc/deploy/actions/setup-node@v1
 
       - name: Capture pre-deploy worker version
         id: pre-deploy
@@ -72,7 +72,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - uses: sennacc/deploy/actions/deploy-worker@main
+      - uses: sennacc/deploy/actions/deploy-worker@v1
         id: deploy
         with:
           cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_KEY }}
@@ -80,7 +80,7 @@ jobs:
           working-directory: .
           environment: production
 
-      - uses: sennacc/deploy/actions/health-check@main
+      - uses: sennacc/deploy/actions/health-check@v1
         id: health
         with:
           url: ${{ vars.HEALTH_CHECK_URL }}
@@ -90,13 +90,13 @@ jobs:
 
       - name: Rollback Worker on health check failure
         if: failure() && steps.health.outcome == 'failure'
-        uses: sennacc/deploy/actions/rollback-worker@main
+        uses: sennacc/deploy/actions/rollback-worker@v1
         with:
           cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_KEY }}
           cloudflare-email: ${{ secrets.CLOUDFLARE_EMAIL }}
           version-id: ${{ steps.pre-deploy.outputs.prev-version }}
 
-      - uses: sennacc/deploy/actions/tag-release@main
+      - uses: sennacc/deploy/actions/tag-release@v1
         if: success()
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
