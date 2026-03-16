@@ -32,7 +32,7 @@ npx wrangler versions list
 
 ### Verify
 ```bash
-./scripts/health-check.sh https://api-senna.blackbox.dog/health
+./scripts/health-check.sh https://api.sennacc.com/health
 ```
 
 ---
@@ -73,7 +73,7 @@ export CLOUDFLARE_EMAIL="..."
 
 ### Verify
 ```bash
-./scripts/health-check.sh https://senna.blackbox.dog
+./scripts/health-check.sh https://painel.sennacc.com
 ```
 
 ---
