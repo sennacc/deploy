@@ -1,7 +1,7 @@
 # Template workflow for Cloudflare Pages repos (sennacc/ui)
 # Copy to .github/workflows/ci.yml in the target repo
 # Replace: project-name, health-url
-# TODO(P1-E): sennacc/deploy/actions/*@main is a floating ref — a push to main instantly
+# TODO(P1-E): sennacc/deploy/actions/*@v1 is a floating ref — a push to main instantly
 # affects all 29 consumer repos. Pin to a semver tag (e.g. @v1) once the first release
 # is cut. Track in: https://github.com/sennacc/deploy/issues (version pinning)
 
@@ -34,9 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: sennacc/deploy/actions/setup-node@main
+      - uses: sennacc/deploy/actions/setup-node@v1
 
-      - uses: sennacc/deploy/actions/lint-typecheck-test@main
+      - uses: sennacc/deploy/actions/lint-typecheck-test@v1
 
   build:
     name: Build Next.js
@@ -48,9 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: sennacc/deploy/actions/setup-node@main
+      - uses: sennacc/deploy/actions/setup-node@v1
 
-      - uses: sennacc/deploy/actions/build-pages@main
+      - uses: sennacc/deploy/actions/build-pages@v1
         with:
           working-directory: .
           output-dir: out
@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: sennacc/deploy/actions/setup-node@main
+      - uses: sennacc/deploy/actions/setup-node@v1
 
       - name: Download build artifact
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4.1.8
@@ -84,7 +84,7 @@ jobs:
           name: pages-out
           path: out/
 
-      - uses: sennacc/deploy/actions/deploy-pages@main
+      - uses: sennacc/deploy/actions/deploy-pages@v1
         id: deploy
         with:
           cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_KEY }}
@@ -106,7 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: sennacc/deploy/actions/setup-node@main
+      - uses: sennacc/deploy/actions/setup-node@v1
 
       - name: Download build artifact
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4.1.8
@@ -114,7 +114,7 @@ jobs:
           name: pages-out
           path: out/
 
-      - uses: sennacc/deploy/actions/deploy-pages@main
+      - uses: sennacc/deploy/actions/deploy-pages@v1
         id: preview
         with:
           cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_KEY }}
