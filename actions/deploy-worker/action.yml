@@ -66,5 +66,5 @@ runs:
         fi
 
         echo "worker-version=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "worker-url=https://${WORKER_NAME}.blackbox.dog" >> "$GITHUB_OUTPUT"
+        echo "worker-url=https://${WORKER_NAME}.sennacc-api.workers.dev" >> "$GITHUB_OUTPUT"
         echo "Deployed: $WORKER_NAME (version: $VERSION)"

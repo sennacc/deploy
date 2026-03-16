@@ -77,7 +77,7 @@ runs:
         echo "$DEPLOY_OUTPUT"
 
         URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[^\s]+\.pages\.dev[^\s]*' | tail -1 \
-          || echo "https://senna.blackbox.dog")
+          || echo "https://painel.sennacc.com")
         DEPLOYMENT_ID=$(echo "$DEPLOY_OUTPUT" | grep -oP 'deployment_id["\s:]+\K[a-f0-9-]+' | head -1 || echo "")
 
         echo "deployment-url=$URL" >> "$GITHUB_OUTPUT"
