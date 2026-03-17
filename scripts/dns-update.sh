@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dns-update.sh — Update a Cloudflare DNS record via API (not UI)
 # Usage: ./scripts/dns-update.sh <record-name> <record-type> <content> [proxy]
-# Example: ./scripts/dns-update.sh api-senna.blackbox.dog A 1.2.3.4 true
+# Example: ./scripts/dns-update.sh api.sennacc.com A 1.2.3.4 true
 # Requires: CLOUDFLARE_API_KEY, CLOUDFLARE_EMAIL, CF_ZONE_ID env vars (X-Auth-Key mode)
 
 set -euo pipefail
