@@ -11,7 +11,7 @@ FORMAT="table"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo)   SINGLE_REPO="${2:-}"; shift 2 ;;
-    --format) FORMAT="${2:-table}"; shift 2 ;;
+    --format) export FORMAT="${2:-table}"; shift 2 ;;
     *) echo "Unknown flag: $1" >&2; exit 1 ;;
   esac
 done

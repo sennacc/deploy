@@ -70,6 +70,6 @@ done
 
 log "FAILED after $MAX_RETRIES attempts. Last HTTP: $HTTP_CODE"
 log "Last response body:"
-cat /tmp/health-response 2>/dev/null | head -20 || true
+head -20 /tmp/health-response 2>/dev/null || true
 rm -f /tmp/health-response
 exit 1
