@@ -88,4 +88,4 @@ else
 fi
 
 log "CHANGELOG.md updated with entry for $TAG"
-cat "$CHANGELOG" | head -30
+head -30 "$CHANGELOG"
