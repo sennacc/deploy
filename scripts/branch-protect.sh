@@ -53,15 +53,11 @@ for REPO in "${REPOS[@]}"; do
     continue
   fi
 
-  if gh api "repos/$FULL_REPO/branches/main/protection" \
+  if echo '{"required_status_checks":{"strict":true,"contexts":["quality"]},"enforce_admins":true,"required_pull_request_reviews":{"required_approving_review_count":1,"dismiss_stale_reviews":true},"restrictions":null,"allow_force_pushes":false,"allow_deletions":false}' | \
+    gh api "repos/$FULL_REPO/branches/main/protection" \
     --method PUT \
     --header "Accept: application/vnd.github+json" \
-    --field 'required_status_checks={"strict":true,"contexts":["quality"]}' \
-    --field 'enforce_admins=true' \
-    --field 'required_pull_request_reviews={"required_approving_review_count":1,"dismiss_stale_reviews":true}' \
-    --field 'restrictions=null' \
-    --field 'allow_force_pushes=false' \
-    --field 'allow_deletions=false' \
+    --input - \
     --silent 2>/dev/null; then
     log "  Protected: $FULL_REPO"
     PROTECTED=$((PROTECTED + 1))
