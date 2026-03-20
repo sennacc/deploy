@@ -5,6 +5,10 @@ inputs:
   cloudflare-api-token:
     description: Cloudflare scoped API Token (least-privilege)
     required: true
+  cloudflare-account-id:
+    description: Cloudflare Account ID (skips /memberships call)
+    required: false
+    default: ''
   working-directory:
     description: Directory with wrangler.toml
     required: false
@@ -40,6 +44,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
       run: |
         DEPLOY_OUTPUT=$(npx wrangler deploy --env "${{ inputs.environment }}" 2>&1) || true
         echo "$DEPLOY_OUTPUT"
