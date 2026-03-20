@@ -65,6 +65,7 @@ runs:
         # SEC-08: X-Auth-Key + X-Auth-Email — NEVER Bearer token
         CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
         CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
       run: |
         BRANCH_FLAG=""
         if [ -n "${{ inputs.branch }}" ]; then
@@ -73,8 +74,14 @@ runs:
 
         DEPLOY_OUTPUT=$(npx wrangler pages deploy "${{ inputs.directory }}" \
           --project-name="${{ inputs.project-name }}" \
-          $BRANCH_FLAG 2>&1)
+          $BRANCH_FLAG 2>&1) || true
         echo "$DEPLOY_OUTPUT"
+
+        # Fail if wrangler output contains error indicators
+        if echo "$DEPLOY_OUTPUT" | grep -qiE "error|fatal|failed to"; then
+          echo "::error::Wrangler deploy failed. See output above."
+          exit 1
+        fi
 
         URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[^\s]+\.pages\.dev[^\s]*' | tail -1 \
           || echo "https://painel.sennacc.com")
