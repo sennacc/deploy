@@ -41,8 +41,14 @@ runs:
       env:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
       run: |
-        DEPLOY_OUTPUT=$(npx wrangler deploy --env "${{ inputs.environment }}" 2>&1)
+        DEPLOY_OUTPUT=$(npx wrangler deploy --env "${{ inputs.environment }}" 2>&1) || true
         echo "$DEPLOY_OUTPUT"
+
+        # Fail explicitly if wrangler reported an error
+        if echo "$DEPLOY_OUTPUT" | grep -qiE "✘.*ERROR|fatal|Authentication error"; then
+          echo "::error::Wrangler deploy failed. See output above."
+          exit 1
+        fi
 
         # Extract version ID from wrangler output
         VERSION=$(echo "$DEPLOY_OUTPUT" | grep -oP 'Version ID: \K[a-f0-9-]+' | head -1 || echo "unknown")
