@@ -2,11 +2,8 @@ name: Deploy CF Worker
 description: Deploy a Cloudflare Worker via wrangler deploy
 
 inputs:
-  cloudflare-api-key:
-    description: Cloudflare Global API Key (X-Auth-Key)
-    required: true
-  cloudflare-email:
-    description: Cloudflare account email
+  cloudflare-api-token:
+    description: Cloudflare scoped API Token (least-privilege)
     required: true
   working-directory:
     description: Directory with wrangler.toml
@@ -42,9 +39,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        # SEC-08: X-Auth-Key + X-Auth-Email — NEVER Bearer token
-        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
-        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
       run: |
         DEPLOY_OUTPUT=$(npx wrangler deploy --env "${{ inputs.environment }}" 2>&1)
         echo "$DEPLOY_OUTPUT"
