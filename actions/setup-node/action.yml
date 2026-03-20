@@ -10,6 +10,10 @@ inputs:
     description: Directory with package.json
     required: false
     default: '.'
+  pkg-token:
+    description: Token for @sennacc/* packages (PKG_TOKEN or GITHUB_TOKEN)
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -28,4 +32,4 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: npm ci --prefer-offline
       env:
-        NODE_AUTH_TOKEN: ${{ github.token }}
+        NODE_AUTH_TOKEN: ${{ inputs.pkg-token || github.token }}
