@@ -46,7 +46,11 @@ runs:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
       run: |
-        DEPLOY_OUTPUT=$(npx wrangler deploy --env "${{ inputs.environment }}" 2>&1) || true
+        ENV_FLAG=""
+        if [ "${{ inputs.environment }}" != "production" ]; then
+          ENV_FLAG="--env ${{ inputs.environment }}"
+        fi
+        DEPLOY_OUTPUT=$(npx wrangler deploy $ENV_FLAG 2>&1) || true
         echo "$DEPLOY_OUTPUT"
 
         # Fail explicitly if wrangler reported an error
