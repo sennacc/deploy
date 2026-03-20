@@ -2,11 +2,8 @@ name: Deploy CF Pages
 description: Deploy a Cloudflare Pages project via wrangler pages deploy
 
 inputs:
-  cloudflare-api-key:
-    description: Cloudflare Global API Key (X-Auth-Key)
-    required: true
-  cloudflare-email:
-    description: Cloudflare account email
+  cloudflare-api-token:
+    description: Cloudflare scoped API Token (least-privilege)
     required: true
   project-name:
     description: Cloudflare Pages project name
@@ -62,9 +59,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        # SEC-08: X-Auth-Key + X-Auth-Email — NEVER Bearer token
-        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
-        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
       run: |
         BRANCH_FLAG=""
@@ -119,8 +114,7 @@ runs:
       if: ${{ inputs.health-url != '' && steps.health.outcome == 'failure' }}
       shell: bash
       env:
-        CLOUDFLARE_API_KEY: ${{ inputs.cloudflare-api-key }}
-        CLOUDFLARE_EMAIL: ${{ inputs.cloudflare-email }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
       run: |
         echo "Health check failed. Rolling back CF Pages deployment."
         CF_API="https://api.cloudflare.com/client/v4"
@@ -129,8 +123,7 @@ runs:
 
         # Get the previous deployment (index 1, current is index 0)
         PREV_DEPLOYMENT=$(curl -sf \
-          -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
-          -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
+          -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
           "${CF_API}/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}/deployments?per_page=2" \
           | jq -r '.result[1].id // empty')
 
@@ -141,8 +134,7 @@ runs:
 
         echo "Rolling back to deployment: $PREV_DEPLOYMENT"
         curl -sf -X POST \
-          -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
-          -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
+          -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
           "${CF_API}/accounts/${ACCOUNT_ID}/pages/projects/${PROJECT}/deployments/${PREV_DEPLOYMENT}/retry"
         echo "CF Pages rollback initiated."
         exit 1  # Still fail the workflow to signal rollback occurred
